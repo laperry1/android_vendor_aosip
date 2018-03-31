@@ -111,6 +111,23 @@ include vendor/aosip/config/packages.mk
 # Versioning
 include vendor/aosip/config/version.mk
 
+# ViPER4Android
+PRODUCT_COPY_FILES += \
+    vendor/aosip/prebuilt/common/viper.zip:system/addon.d/viper.zip
+
+# Copy Magisk zip
+PRODUCT_COPY_FILES += \
+    vendor/aosip/prebuilt/common/magisk.zip:system/addon.d/magisk.zip
+
+#LMT
+PRODUCT_COPY_FILES += \
+    vendor/aosip/prebuilt/common/app/LMT_v2.9.apk:system/priv-app/LMT/LMT_v2.9.apk \
+ 	vendor/aosip/prebuilt/common/app/libTouchServiceNative.so:system/lib64/libTouchServiceNative.so
+
+#ADAWAY
+PRODUCT_COPY_FILES += \
+    vendor/aosip/prebuilt/common/app/AdAway.apk:system/priv-app/AdAway/AdAway.apk
+
 # Fonts
 PRODUCT_COPY_FILES += \
     vendor/aosip/fonts/GoogleSans-Regular.ttf:system/fonts/GoogleSans-Regular.ttf \
