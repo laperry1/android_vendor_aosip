@@ -1,6 +1,6 @@
 PRODUCT_BUILD_PROP_OVERRIDES += BUILD_UTC_DATE=0
 
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     keyguard.no_require_sim=true \
     dalvik.vm.debug.alloc=0 \
     ro.url.legal=http://www.google.com/intl/%s/mobile/android/basic/phone-legal.html \
@@ -14,10 +14,10 @@ PRODUCT_GENERIC_PROPERTIES += \
     ro.carrier=unknown
 
 ifeq ($(PRODUCT_GMS_CLIENTID_BASE),)
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     ro.com.google.clientidbase=android-google
 else
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     ro.com.google.clientidbase=$(PRODUCT_GMS_CLIENTID_BASE)
 endif
 
@@ -49,13 +49,13 @@ PRODUCT_COPY_FILES += \
     vendor/aosip/prebuilt/common/etc/init.d/00banner:system/etc/init.d/00banner \
     vendor/aosip/prebuilt/common/bin/sysinit:system/bin/sysinit
 
-# Init file
-PRODUCT_COPY_FILES += \
-    vendor/aosip/prebuilt/common/etc/init.local.rc:root/init.aosip.rc
-
 # Don't export PS1 in /system/etc/mkshrc.
 PRODUCT_COPY_FILES += \
     vendor/aosip/prebuilt/common/etc/mkshrc:system/etc/mkshrc
+
+# Copy all AOSiP-specific init rc files
+$(foreach f,$(wildcard vendor/aosip/prebuilt/common/etc/init/*.rc),\
+	$(eval PRODUCT_COPY_FILES += $(f):system/etc/init/$(notdir $f)))
 
 # Fix Dialer
 PRODUCT_COPY_FILES +=  \
@@ -66,20 +66,20 @@ PRODUCT_COPY_FILES += \
     vendor/aosip/prebuilt/common/bin/clean_cache.sh:system/bin/clean_cache.sh
 
 # Storage manager
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     ro.storage_manager.enabled=true
 
 # Media
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     media.recorder.show_manufacturer_and_model=true
 
 # Set custom volume steps
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     ro.config.media_vol_steps=30 \
     ro.config.bt_sco_vol_steps=30
 
 # Disable Rescue Party
-PRODUCT_GENERIC_PROPERTIES += \
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     persist.sys.disable_rescue=true
 
 # Charger

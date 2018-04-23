@@ -123,13 +123,13 @@ function target_file() {
 #
 # target_args:
 #
-# $1: colon delimited list
+# $1: semicolon delimited list
 #
 # Returns optional arguments (last value) for given target
 #
 function target_args() {
     local LINE="$1"
-    local SPLIT=(${LINE//:/ })
+    local SPLIT=(${LINE//;/ })
     local COUNT=${#SPLIT[@]}
     if [ "$COUNT" -gt "1" ]; then
         if [[ ! "${SPLIT[$COUNT-1]}" =~ .*/.* ]]; then
@@ -148,7 +148,8 @@ function target_args() {
 #
 function prefix_match() {
     local PREFIX="$1"
-    for FILE in "${PRODUCT_PACKAGES_LIST[@]}"; do
+    for LINE in "${PRODUCT_PACKAGES_LIST[@]}"; do
+        local FILE=$(target_file "$LINE")
         if [[ "$FILE" =~ ^"$PREFIX" ]]; then
             printf '%s\n' "${FILE#$PREFIX}"
         fi
@@ -218,7 +219,7 @@ function write_product_copy_files() {
             LINEEND=""
         fi
 
-        TARGET=$(target_file "$FILE")
+        TARGET=$(echo $(target_file "$FILE") | sed 's/\;.*//')
         if [ "$TREBLE_COMPAT" == "true" ] || [ "$TREBLE_COMPAT" == "1" ]; then
             if prefix_match_file "vendor/" $TARGET ; then
                 local OUTTARGET=$(truncate_file $TARGET)
@@ -266,7 +267,7 @@ function write_packages() {
     local SRC=
 
     for P in "${FILELIST[@]}"; do
-        FILE=$(target_file "$P")
+        FILE=$(echo $(target_file "$P") | sed 's/\;.*//')
         ARGS=$(target_args "$P")
 
         BASENAME=$(basename "$FILE")
@@ -305,12 +306,10 @@ function write_packages() {
                 printf 'LOCAL_MULTILIB := %s\n' "$EXTRA"
             fi
         elif [ "$CLASS" = "APPS" ]; then
-            if [ -z "$ARGS" ]; then
-                if [ "$EXTRA" = "priv-app" ]; then
-                    SRC="$SRC/priv-app"
-                else
-                    SRC="$SRC/app"
-                fi
+            if [ "$EXTRA" = "priv-app" ]; then
+                SRC="$SRC/priv-app"
+            else
+                SRC="$SRC/app"
             fi
             printf 'LOCAL_SRC_FILES := %s/%s\n' "$SRC" "$FILE"
             local CERT=platform
@@ -360,7 +359,7 @@ function write_packages() {
             printf 'LOCAL_PRIVILEGED_MODULE := true\n'
         fi
         if [ "$VENDOR_PKG" = "true" ]; then
-            printf 'LOCAL_PROPRIETARY_MODULE := true\n'
+            printf 'LOCAL_VENDOR_MODULE := true\n'
         fi
         printf 'include $(BUILD_PREBUILT)\n\n'
     done
@@ -441,7 +440,7 @@ function write_product_packages() {
         write_packages "JAVA_LIBRARIES" "false" "" "FRAMEWORK" >> "$ANDROIDMK"
     fi
     local V_FRAMEWORK=( $(prefix_match "vendor/framework/") )
-    if [ "${#FRAMEWORK[@]}" -gt "0" ]; then
+    if [ "${#V_FRAMEWORK[@]}" -gt "0" ]; then
         write_packages "JAVA_LIBRARIES" "true" "" "V_FRAMEWORK" >> "$ANDROIDMK"
     fi
 
@@ -656,6 +655,7 @@ function parse_file_list() {
 
         # if line starts with a dash, it needs to be packaged
         if [[ "$SPEC" =~ ^- ]]; then
+            SPEC=$(echo "${SPEC}" | sed 's/[^"]*://')
             PRODUCT_PACKAGES_LIST+=("${SPEC#-}")
             PRODUCT_PACKAGES_HASHES+=("$HASH")
         else
@@ -743,10 +743,15 @@ function oat2dex() {
     local SRC="$3"
     local TARGET=
     local OAT=
+    local HOST="$(uname)"
 
     if [ -z "$BAKSMALIJAR" ] || [ -z "$SMALIJAR" ]; then
         export BAKSMALIJAR="$AOSIP_ROOT"/vendor/aosip/build/tools/smali/baksmali.jar
         export SMALIJAR="$AOSIP_ROOT"/vendor/aosip/build/tools/smali/smali.jar
+    fi
+
+    if [ -z "$VDEXEXTRACTOR" ]; then
+        export VDEXEXTRACTOR="$AOSIP_ROOT"/vendor/aosip/build/tools/"$HOST"/vdexExtractor
     fi
 
     # Extract existing boot.oats to the temp folder
@@ -787,22 +792,32 @@ function oat2dex() {
 
         if get_file "$OAT" "$TMPDIR" "$SRC"; then
             if get_file "$VDEX" "$TMPDIR" "$SRC"; then
-                echo "WARNING: Deodexing with VDEX. Still experimental"
+                "$VDEXEXTRACTOR" -o "$TMPDIR/" -i "$TMPDIR/$(basename "$VDEX")" > /dev/null
+                mv "$TMPDIR/$(basename "${OEM_TARGET%.*}").apk_classes.dex" "$TMPDIR/classes.dex"
+            else
+                java -jar "$BAKSMALIJAR" deodex -o "$TMPDIR/dexout" -b "$BOOTOAT" -d "$TMPDIR" "$TMPDIR/$(basename "$OAT")"
+                java -jar "$SMALIJAR" assemble "$TMPDIR/dexout" -o "$TMPDIR/classes.dex"
             fi
-            java -jar "$BAKSMALIJAR" deodex -o "$TMPDIR/dexout" -b "$BOOTOAT" -d "$TMPDIR" "$TMPDIR/$(basename "$OAT")"
         elif [[ "$AOSIP_TARGET" =~ .jar$ ]]; then
-            # try to extract classes.dex from boot.oats for framework jars
-            # TODO: check if extraction from boot.vdex is needed
             JAROAT="$TMPDIR/system/framework/$ARCH/boot-$(basename ${OEM_TARGET%.*}).oat"
+            JARVDEX="$TMPDIR/system/framework/$ARCH/boot-$(basename ${OEM_TARGET%.*}).vdex"
             if [ ! -f "$JAROAT" ]; then
                 JAROAT=$BOOTOAT;
             fi
-            java -jar "$BAKSMALIJAR" deodex -o "$TMPDIR/dexout" -b "$BOOTOAT" -d "$TMPDIR" "$JAROAT/$OEM_TARGET"
+
+            # try to extract classes.dex from boot.vdex for frameworks jars
+            # fallback to boot.oat if vdex is not available
+            if [ -f "$JARVDEX" ]; then
+                "$VDEXEXTRACTOR" -o "$TMPDIR/" -i "$JARVDEX" > /dev/null
+                mv "$TMPDIR/boot-$(basename "${OEM_TARGET%.*}").apk_classes.dex" "$TMPDIR/classes.dex"
+            else
+                java -jar "$BAKSMALIJAR" deodex -o "$TMPDIR/dexout" -b "$BOOTOAT" -d "$TMPDIR" "$JAROAT/$OEM_TARGET"
+                java -jar "$SMALIJAR" assemble "$TMPDIR/dexout" -o "$TMPDIR/classes.dex"
+            fi
         else
             continue
         fi
 
-        java -jar "$SMALIJAR" assemble "$TMPDIR/dexout" -o "$TMPDIR/classes.dex" && break
     done
 
     rm -rf "$TMPDIR/dexout"
@@ -935,10 +950,10 @@ function extract() {
 
     for (( i=1; i<COUNT+1; i++ )); do
 
-        local FROM=$(target_file "${FILELIST[$i-1]}")
+        local FROM=$(echo $(target_file "${FILELIST[$i-1]}") | sed 's/\;.*//')
         local ARGS=$(target_args "${FILELIST[$i-1]}")
         local SPLIT=(${FILELIST[$i-1]//:/ })
-        local FILE="${SPLIT[0]#-}"
+        local FILE=$(echo "${SPLIT[0]#-}" | sed 's/\;.*//')
         local OUTPUT_DIR="$OUTPUT_ROOT"
         local TMP_DIR="$OUTPUT_TMP"
         local TARGET=
