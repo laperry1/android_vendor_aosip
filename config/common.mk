@@ -106,10 +106,6 @@ include vendor/aosip/config/packages.mk
 # Versioning
 include vendor/aosip/config/version.mk
 
-# ViPER4Android
-PRODUCT_COPY_FILES += \
-    vendor/aosip/prebuilt/common/viper.zip:system/addon.d/viper.zip
-
 # Copy Magisk zip
 PRODUCT_COPY_FILES += \
     vendor/aosip/prebuilt/common/magisk.zip:system/addon.d/magisk.zip
